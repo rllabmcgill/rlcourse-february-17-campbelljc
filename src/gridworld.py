@@ -19,6 +19,7 @@ import environment
 import util
 import optparse
 from collections import defaultdict
+import fileio
 
 class Gridworld(mdp.MarkovDecisionProcess):
     """
@@ -29,12 +30,24 @@ class Gridworld(mdp.MarkovDecisionProcess):
         if type(grid) == type([]): grid = makeGrid(grid)
         self.grid = grid
         
+        SPECIAL_CHARS = ['l', '>', '<', 'v', '^']
         self.state_probs = defaultdict(lambda: 1)
+        self.additional_movement = defaultdict(lambda: (0, 0))
         for i, row in enumerate(self.grid):
             for j, col in enumerate(self.grid[i]):
                 if self.grid[i][j] == 'l':
-                    self.grid[i][j] = ' '
                     self.state_probs[(i, j)] = 0.05 # 10% chance
+                elif self.grid[i][j] == '>':
+                    self.additional_movement[(i, j)] = (1, 0)
+                elif self.grid[i][j] == '<':
+                    self.additional_movement[(i, j)] = (-1, 0)
+                elif self.grid[i][j] == 'v':
+                    self.additional_movement[(i, j)] = (0, -1)
+                elif self.grid[i][j] == '^':
+                    self.additional_movement[(i, j)] = (0, 1)
+                
+                if self.grid[i][j] in SPECIAL_CHARS:
+                    self.grid[i][j] = ' '
 
         # parameters
         self.livingReward = 0.0
@@ -136,13 +149,38 @@ class Gridworld(mdp.MarkovDecisionProcess):
         if type(self.grid[x][y]) == int or type(self.grid[x][y]) == float:
             termState = self.grid.terminalState
             return [(termState, 1.0)]
+        
+        # get the additional movement for current square (wind)
+        add_x, add_y = self.additional_movement[(x, y)]
+        
+        states = [None for i in range(4)]
+        dir_deltas = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+        wind_deltas = [(x+add_x, y+add_y) for (x, y) in dir_deltas]
+        
+        if any(wind_delta not in dir_deltas for wind_delta in wind_deltas):
+            # there is some wind, so prioritize these actions.
+            for i, ((wx, wy), (dx, dy)) in enumerate(zip(wind_deltas, dir_deltas)):
+                if wx == dx and wy == dy:
+                    # if player moves in same direction as wind, don't move twice.
+                    continue
+                if self.__isAllowed(y+wy, x+wx):
+                    states[i] = (x+wx, y+wy)
+        
+        for i, (dx, dy) in enumerate(dir_deltas):
+            if states[i] is None:
+                # there was no wind, or we couldn't move to the windy state, so try regular delta.
+                if self.__isAllowed(y+dy, x+dx):
+                    states[i] = (x+dx, y+dy)
+        
+        for i in range(len(states)):
+            if states[i] is None:
+                # we couldn't move to whichever state (either regular movement and/or windy movement)
+                # so stay in same (current) state
+                states[i] = state
+
+        northState, southState, eastState, westState = states
 
         successors = []
-
-        northState = (self.__isAllowed(y+1,x) and (x,y+1)) or state
-        westState = (self.__isAllowed(y,x-1) and (x-1,y)) or state
-        southState = (self.__isAllowed(y-1,x) and (x,y-1)) or state
-        eastState = (self.__isAllowed(y,x+1) and (x+1,y)) or state
 
         if action == 'north' or action == 'south':
             prob = 1
@@ -297,6 +335,12 @@ def getCliffGrid():
             [-100,-100, -100, -100, -100]]
     return Gridworld(makeGrid(grid))
 
+def getCliffGrid_long():
+    grid = [[' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '],
+            ['S',' ',' ',' ',' ',' ',' ',' ',' ',' ',10],
+            [-100,-100, -100, -100, -100, -100, -100, -100, -100, -100, -100]]
+    return Gridworld(makeGrid(grid))
+
 def getCliffGrid2():
     grid = [[' ',' ',' ',' ',' '],
             [8,'S',' ',' ',10],
@@ -322,6 +366,48 @@ def getBookGrid():
             [' ','#',' ',-1],
             [' ',' ',' ',' '],
             ['S',' ','#',' ']]
+    return Gridworld(grid)
+
+def getSquareGrid():
+    grid = [[' ',' ',' ',' ',' ',' ',' '],
+            [' ',' ',' ',' ',' ',' ',' '],
+            [' ',' ',' ',' ',' ',' ',' '],
+            [' ',' ',' ',+1,' ',' ',' '],
+            [' ',' ',' ',' ',' ',' ',' '],
+            [' ',' ',' ',' ',' ',' ',' '],
+            [' ',' ',' ',' ',' ',' ','S']]
+    return Gridworld(grid)
+
+def getWindyCliffGrid():
+    grid = [[-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100],
+            [-100,' ',' ',' ','^','^','^','^','^','^',' ',-100],
+            [-100,' ',' ',' ','^','^','^','^','^','^',' ',-100],
+            [-100,' ',' ',' ','^','^','^','^','^','^',' ',-100],
+            [-100,' ',' ',' ','^','^','^','^', 10,'^',' ',-100],
+            [-100,' ',' ',' ','^','^','^','^','^','^',' ',-100],
+            [-100,' ','S',' ','^','^','^','^','^','^',' ',-100],
+            [-100,' ',' ',' ','^','^','^','^','^','^',' ',-100],
+            [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100]]
+    return Gridworld(grid)
+
+def getWindyGrid():
+    grid = [[' ',' ',' ','^','^','^','^',' ',' '],
+            [' ',' ',' ','^','^','^','^',' ',' '],
+            [' ',' ',' ','^','^','^','^',' ',' '],
+            [' ',' ',' ','^','^','^', 1 ,' ',' '],
+            [' ',' ',' ','^','^','^','^',' ',' '],
+            [' ',' ',' ','^','^','^','^',' ',' '],
+            ['S',' ',' ','^','^','^','^',' ',' ']]
+    return Gridworld(grid)
+
+def getWindyGrid2():
+    grid = [[' ',' ',' ','^','^','^',' ','v','v',' ',' ',' ',' ',' '],
+            [' ',' ',' ','^','^','^',' ','v','v',' ',' ',' ',' ',' '],
+            [' ',' ',' ','^','^','^',' ','v','v',' ','<','<','v',' '],
+            [' ',' ',' ','^','^','^',' ','v','v',' ','<', +1,'<',' '],
+            [' ',' ',' ','^','^','^',' ','v','v',' ','<','<','^',' '],
+            [' ',' ',' ','^','^','^','<','v','v',' ',' ',' ',' ',' '],
+            ['S',' ',' ','^','^','^','<','v','v',' ',' ',' ',' ',' ']]
     return Gridworld(grid)
 
 def getMazeGrid():
@@ -385,7 +471,6 @@ def getRandomGrid():
         grid[i] = [c for c in row]
     
     # now determine dead-ends
-    '''
     deadends = []
     walls = []
     for x in range(len(grid)):
@@ -406,7 +491,6 @@ def getRandomGrid():
     
     if len(deadends) < 3:
         return getRandomGrid()
-    '''
     
     for i in range(0, len(walls)):
         # no walls
@@ -474,34 +558,48 @@ def getUserAction(state, actionFunction):
 
 def printString(x): print(x)
 
-def runEpisode(agent, environment, discount, decision, display, message, pause, episode):
+def runEpisode(agent, environment, discount, decision, display, message, pause, episode, update=True, bounded=False):
     returns = 0
     totalDiscount = 1.0
     environment.reset(agent)
-    if 'startEpisode' in dir(agent): agent.startEpisode()
-    message("BEGINNING EPISODE: "+str(episode)+"\n")
+    if 'startEpisode' in dir(agent): agent.startEpisode(environment.getCurrentState())
+    #message("BEGINNING EPISODE: "+str(episode)+"\n")
     
     timestep = 0
-    MAX_TIMESTEPS = 20
+    MAX_TIMESTEPS = 40
+    
     while True:
-        if timestep >= MAX_TIMESTEPS:
-            return returns
-
+        #print("timestep ", timestep)
         # DISPLAY CURRENT STATE
         state = environment.getCurrentState()
-        display(state)
+        if display is not None:
+            display(state)
         #pause()
-        if timestep == 0 and episode == 1:
-            input("")
+        #if timestep == 0 and episode == 1:
+        #if not update:
+        #    input("")
+        
+        if 'should_end_episode' in dir(agent) and agent.should_end_episode():
+            #message("EPISODE "+str(episode)+" COMPLETE: RETURN WAS "+str(returns)+"\n")
+            if 'stopEpisode' in dir(agent):
+                agent.stopEpisode()
+            return (timestep, returns)
         
         # END IF IN A TERMINAL STATE
         actions = environment.getPossibleActions(state)
-        if len(actions) == 0:
-            message("EPISODE "+str(episode)+" COMPLETE: RETURN WAS "+str(returns)+"\n")
-            return returns
+        if len(actions) == 0 or (bounded and timestep >= MAX_TIMESTEPS):
+            if update and len(actions) == 0: # reached terminal state but we are using n-step agent
+                agent.update(state, None, None, None, update) # keep going until n-step agent says stop
+                continue # for n-step agent
+            elif not update: # not n-step agent so terminate on goal state or time exceeded
+                message("EPISODE "+str(episode)+" COMPLETE: RETURN WAS "+str(returns)+"\n")
+                if 'stopEpisode' in dir(agent):
+                    agent.stopEpisode()
+                return (timestep, returns)
 
         # GET ACTION (USUALLY FROM AGENT)
         action = decision(state)
+        #print(action)
         if action == None:
             raise 'Error: Agent returned None action'
 
@@ -513,7 +611,7 @@ def runEpisode(agent, environment, discount, decision, display, message, pause, 
         #        "\nGot reward: "+str(reward)+"\n")
         # UPDATE LEARNER
         if 'observeTransition' in dir(agent):
-            agent.observeTransition(state, action, nextState, reward)
+            agent.observeTransition(state, action, nextState, reward, update)
 
         returns += reward * totalDiscount
         totalDiscount *= discount
@@ -541,12 +639,21 @@ def parseOptions():
     optParser.add_option('-l', '--learningRate',action='store',
                          type='float',dest='learningRate',default=0.5,
                          metavar="P", help='TD learning rate (default %default)' )
+    optParser.add_option('-O', '--sigma',action='store',
+                         type='float',dest='sigma',default=0.5,
+                         metavar="P", help='Sigma val for Q-sigma agent' )
     optParser.add_option('-i', '--iterations',action='store',
                          type='int',dest='iters',default=10,
                          metavar="K", help='Number of rounds of value iteration (default %default)')
+    optParser.add_option('-B', '--step-n',action='store',
+                         type='int',dest='stepn',default=1,
+                         metavar="K", help='Value for n (n-step)')
     optParser.add_option('-k', '--episodes',action='store',
                          type='int',dest='episodes',default=1,
-                         metavar="K", help='Number of epsiodes of the MDP to run (default %default)')
+                         metavar="K", help='Number of episodes of the MDP to run (default %default)')
+    optParser.add_option('-Z', '--posteps',action='store',
+                         type='int',dest='post_eps',default=0,
+                         metavar="K", help='Number of episodes to run when done learning (for statistics) (default %default)')
     optParser.add_option('-g', '--grid',action='store',
                          metavar="G", type='string',dest='grid',default="BookGrid",
                          help='Grid to use (case sensitive; options are BookGrid, BridgeGrid, CliffGrid, MazeGrid, default %default)' )
@@ -625,9 +732,18 @@ if __name__ == '__main__':
     # GET THE AGENT
     ###########################
 
-    import valueIterationAgents, rtdp #, qlearningAgents
+    #import valueIterationAgents, rtdp #, qlearningAgents
+    import sarsa_agents, tree_backup, q_sigma
     a = None
-    if opts.agent == 'value':
+    if opts.agent == 'n_step_sarsa':
+        a = sarsa_agents.NStepSarsaAgent(discount=opts.discount, alpha=opts.learningRate, epsilon=opts.epsilon, actionFn=lambda state: mdp.getPossibleActions(state), n=opts.stepn, terminalFn=lambda state: mdp.isTerminal(state))
+    elif opts.agent == 'n_step_expected_sarsa':
+        a = sarsa_agents.NStepExpectedSarsaAgent(discount=opts.discount, alpha=opts.learningRate, epsilon=opts.epsilon, actionFn=lambda state: mdp.getPossibleActions(state), n=opts.stepn, terminalFn=lambda state: mdp.isTerminal(state))
+    elif opts.agent == 'tree_backup':
+        a = tree_backup.NStepTreeBackupAgent(discount=opts.discount, alpha=opts.learningRate, epsilon=opts.epsilon, actionFn=lambda state: mdp.getPossibleActions(state), n=opts.stepn, terminalFn=lambda state: mdp.isTerminal(state))
+    elif opts.agent == 'qsigma':
+        a = q_sigma.QSigmaAgent(discount=opts.discount, alpha=opts.learningRate, epsilon=opts.epsilon, actionFn=lambda state: mdp.getPossibleActions(state), n=opts.stepn, terminalFn=lambda state: mdp.isTerminal(state), sigma=opts.sigma, numEpisodes=opts.episodes)
+    elif opts.agent == 'value':
         a = valueIterationAgents.ValueIterationAgent(mdp, env, opts.discount, opts.iters, display)
     elif opts.agent == 'valuegs':
         a = valueIterationAgents.GSValueIterationAgent(mdp, env, opts.discount, opts.iters, display)
@@ -691,10 +807,8 @@ if __name__ == '__main__':
         if opts.manual and opts.agent == None:
             displayCallback = lambda state: display.displayNullValues(state)
         else:
-            if opts.agent == 'random': displayCallback = lambda state: display.displayValues(a, state, "CURRENT VALUES")
-            if opts.agent == 'value': displayCallback = lambda state: display.displayValues(a, state, "CURRENT VALUES")
-            if opts.agent == 'valuegs': displayCallback = lambda state: display.displayValues(a, state, "CURRENT VALUES")
-            if opts.agent == 'rtdp': displayCallback = lambda state: display.displayValues(a, state, "CURRENT VALUES")
+            if opts.agent in ['random', 'value', 'valuegs', 'rtdp']: displayCallback = lambda state: display.displayValues(a, state, "CURRENT VALUES")
+            elif opts.agent in ['n_step_sarsa', 'n_step_expected_sarsa', 'tree_backup', 'qsigma']: displayCallback = lambda state: display.displayQValues(a, state, "CURRENT Q-VALUES")
 
     messageCallback = lambda x: printString(x)
     if opts.quiet:
@@ -718,19 +832,39 @@ if __name__ == '__main__':
         print
     returns = 0
     for episode in range(1, opts.episodes+1):
-        returns += runEpisode(a, env, opts.discount, decisionCallback, displayCallback, messageCallback, pauseCallback, episode)
+        #timestep, ret = runEpisode(a, env, opts.discount, decisionCallback, displayCallback, messageCallback, pauseCallback, episode)
+        timestep, ret = runEpisode(a, env, opts.discount, decisionCallback, None, messageCallback, pauseCallback, episode)
+        returns += ret
+        
+        #print("Getting return from greedy policy...")
+        # now do a time-bounded episode without updating any state-values
+        #ret = runEpisode(a, env, opts.discount, decisionCallback, displayCallback, messageCallback, pauseCallback, episode, update=False, bounded=True)
+        #agent_name = opts.agent
+        #fileio.append((timestep, ret), "results/returns_learning_" + agent_name + "_" + str(opts.learningRate) + "_" + str(opts.epsilon) + "_" + str(opts.stepn) + "_" + str(opts.sigma))
+        
     if opts.episodes > 0:
         print
         print("AVERAGE RETURNS FROM START STATE: "+str((returns+0.0) / opts.episodes))
         print
         print
+    
+    # now gather stats
+    #print("Gathering stats...")
+    for episode in range(1, opts.post_eps+1):
+        timestep, ret = runEpisode(a, env, opts.discount, decisionCallback, None, messageCallback, pauseCallback, episode, update=False)
+        agent_name = opts.agent
+        fileio.append((timestep, ret), "results/returns_post_" + agent_name + "_" + str(opts.learningRate) + "_" + str(opts.epsilon) + "_" + str(opts.stepn) + "_" + str(opts.sigma))
 
+    '''
     # DISPLAY POST-LEARNING VALUES / Q-VALUES
-    if opts.agent == 'q' and not opts.manual:
+    if (opts.agent in ['q', 'n_step_sarsa', 'n_step_expected_sarsa', 'tree_backup', 'qsigma']) and not opts.manual:
         try:
             display.displayQValues(a, message = "Q-VALUES AFTER "+str(opts.episodes)+" EPISODES")
             display.pause()
+            input("")
             display.displayValues(a, message = "VALUES AFTER "+str(opts.episodes)+" EPISODES")
             display.pause()
+            input("")
         except KeyboardInterrupt:
             sys.exit(0)
+    '''

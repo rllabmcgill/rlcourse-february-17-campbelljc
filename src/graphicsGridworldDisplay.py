@@ -255,7 +255,7 @@ def drawSquare(x, y, val, min, max, valStr, action, isObstacle, isTerminal, isCu
         circle( (screen_x, screen_y), 0.1*GRID_SIZE, outlineColor=LOCATION_COLOR, fillColor=LOCATION_COLOR )
 
     if not isObstacle:
-        text( (screen_x, screen_y), text_color, valStr, "Courier", -16, "bold", "c")
+        text( (screen_x, screen_y), text_color, valStr, "Courier", -20, "bold", "c")
 
 
 def drawSquareQ(x, y, qVals, minVal, maxVal, valStrs, bestActions, isCurrent):
@@ -307,7 +307,7 @@ def drawSquareQ(x, y, qVals, minVal, maxVal, valStrs, bestActions, isCurrent):
         valStr = ""
         if action in valStrs:
             valStr = valStrs[action]
-        h = -20
+        h = -16
         if action == 'north':
             #polygon( (center, nw, ne), wedge_color, filled = 1, smooth = 0)
             text(n, text_color, valStr, "Courier", h, "bold", "n")
@@ -322,12 +322,12 @@ def drawSquareQ(x, y, qVals, minVal, maxVal, valStrs, bestActions, isCurrent):
             text(w, text_color, valStr, "Courier", h, "bold", "w")
 
 
-def getColor(val, minVal, max):
+def getColor(val, minVal, maxVal):
     r, g = 0.0, 0.0
     if val < 0 and minVal < 0:
         r = val * 0.65 / minVal
-    if val > 0 and max > 0:
-        g = val * 0.65 / max
+    if val > 0 and maxVal > 0:
+        g = val * 0.65 / maxVal
     return formatColor(r,g,0.0)
 
 

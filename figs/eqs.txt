@@ -1,0 +1,3 @@
+G_{t}^{(2)} = R_{t+1} \\ ~~~~~~~~~~~~~~ + \gamma V_{t+1} \\ ~~~~~~~~~~~~~~ + \gamma \pi \left ( A_{t+1} | S_{t+1} \right ) [ R_{t+2} + \gamma V_{t+2} - Q_{t}\left ( S_{t+1}, A_{t+1}  \right ) ]
+\\\\
+\textup{where  } V_{t} = \sum_{a} \pi \left ( a | S_{t} \right )Q_{t-1}\left ( S_{t}, a \right )
